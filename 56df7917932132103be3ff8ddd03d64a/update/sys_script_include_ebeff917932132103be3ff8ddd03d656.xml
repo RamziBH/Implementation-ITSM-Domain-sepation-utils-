@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>global.DelegateUtils</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>Utilities to support the display and modification of delegates.</description>
+        <mobile_callable>false</mobile_callable>
+        <name>DelegateUtils</name>
+        <sandbox_callable>false</sandbox_callable>
+        <script><![CDATA[var DelegateUtils = Class.create();
+DelegateUtils.prototype = {
+	initialize: function () { },
+
+	/**SNDOC
+	@name getDelegates
+	@description Based on the passed user sys_id, retrieves all of their delegates and everyone that has delegated to them.
+
+	@param {string} [userId] - Sys_id of a user record
+	@param {string} [dateFormat] - Date format of a user
+	@param {string} [type] - Controls which type of delegate is retrieved (delegates || delegated)
+	@param {string} [nameField] - Internal name of the field used for first name
+
+	@example
+	var answer = new DelegateUtils().getDelegates(gs.getUserID());
+
+	// answer == {
+			"delegates": [
+				{
+					"sys_id": "d4da0e6f1b6701101421ec21604bcbb4",
+					"user": "6816f79cc0a8016401c5a33be04be441",
+					"user_name": {
+						"first": "System",
+						"last": "Administrator"
+					},
+					"delegate": "62826bf03710200044e0bfc8bcbe5df1",
+					"delegate_name": {
+						"first": "Abel",
+						"last": "Tuter",
+						"full": "Abel Tutor"
+					},
+					"starts": "05-25-2022",
+					"ends": "01-01-2100",
+					"approvals": "1",
+					"assignments": "0",
+					"invitations": "0",
+					"notifications": "0"
+				}
+			],
+			"delegated": [
+				{
+					"sys_id": "4828f3331b5301101421ec21604bcbc5",
+					"user": "62826bf03710200044e0bfc8bcbe5df1",
+					"user_name": {
+						"first": "Abel",
+						"last": "Tuter"
+					},
+					"delegate": "6816f79cc0a8016401c5a33be04be441",
+					"delegate_name": {
+						"first": "System",
+						"last": "Administrator"
+					},
+					"starts": "05-13-2022",
+					"ends": "01-01-2100",
+					"approvals": "1",
+					"assignments": "1",
+					"invitations": "1",
+					"notifications": "1"
+				}
+			]
+		}
+
+	@returns {object} Object containing all delegates
+	*/
+	getDelegates: function (userId, dateFormat, type, nameField) {
+
+		if (!type) {
+			type = 'delegates';
+		}
+
+		var answer = {};
+
+		var gdt = new GlideDateTime();
+
+		var delegates = [];
+
+		var query = 'ends>' + gdt + '^delegate=' + userId + '^user!=' + userId;
+		if (type != 'delegated') {
+			query = 'ends>' + gdt + '^user=' + userId + '^delegate!=' + userId;
+		}
+
+		var delegate = new GlideRecord('sys_user_delegate');
+		delegate.addEncodedQuery(query);
+		delegate.orderBy('user.' + nameField);
+		delegate.query();
+		while (delegate.next()) {
+			delegates.push(this._getDelegate(delegate, dateFormat, nameField));
+		}
+
+		answer.delegates = delegates;
+
+		return answer;
+	},
+
+	/**SNDOC
+	@name _getDelegate
+	@description Gets all properties of a delegate.
+
+	@param {object} [aDelegate] - GlideRecord of a delegate record
+	@param {string} [dateFormat] - User's date format e.g. MM-dd-yyyy
+	@param {string} [nameField] - Internal name of the field used for first name
+
+	@example
+	var answer = this._getDelegate(delegate);
+
+	// answer == {
+			"sys_id": "974bce6f1b6701101421ec21604bcb02",
+			"user": "6816f79cc0a8016401c5a33be04be441",
+			"user_name": {
+				"first": "System",
+				"last": "Administrator"
+			},
+			"delegate": "22826bf03710200044e0bfc8bcbe5dec",
+			"delegate_name": {
+				"first": "Alejandra",
+				"last": "Prenatt",
+				"full": "Alejandra Prenatt"
+			},
+			"starts": "05-25-2022",
+			"ends": "01-01-2100",
+			"approvals": "0",
+			"assignments": "0",
+			"invitations": "1",
+			"notifications": "1"
+		}
+
+	@returns {object} Object containing all properties of a delegate record
+	*/
+	_getDelegate: function (aDelegate, dateFormat, nameField) {
+
+		var sys_id = aDelegate.sys_id.getValue(),
+			starts = aDelegate.starts.getByFormat(dateFormat),
+			ends = aDelegate.ends.getByFormat(dateFormat),
+			approvals = aDelegate.approvals.getValue(),
+			assignments = aDelegate.assignments.getValue(),
+			invitations = aDelegate.invitations.getValue(),
+			notifications = aDelegate.notifications.getValue(),
+			user = aDelegate.user.getValue(),
+			userFirst = aDelegate.user[nameField].getDisplayValue(),
+			userLast = aDelegate.user.last_name.getDisplayValue(),
+			delegate = aDelegate.delegate.getValue(),
+			delegateFirst = aDelegate.delegate[nameField].getDisplayValue(),
+			delegateLast = aDelegate.delegate.last_name.getDisplayValue();
+
+		return {
+			sys_id: sys_id,
+			user: user,
+			user_name: {
+				first: userFirst,
+				last: userLast,
+				full: aDelegate.user.name.getDisplayValue()
+			},
+			delegate: delegate,
+			delegate_name: {
+				first: delegateFirst,
+				last: delegateLast,
+				full: aDelegate.delegate.name.getDisplayValue()
+			},
+			starts: starts,
+			ends: ends,
+			approvals: approvals,
+			assignments: assignments,
+			invitations: invitations,
+			notifications: notifications
+		};
+
+	},
+
+	/**SNDOC
+	@name createDelegate
+	@description Creates a delegate with the specified settings.
+
+	@param {object} [delegateObj] - Object containing all properties needed to create a delegate record
+	delegateObj = {
+		"user": "2f80007ddbea8b00e108d12c5e961951",
+		"delegate": "36f2984ddbb16b402e1f591e5e9619b7",
+		"starts": "2022-05-24 17:00:00",
+		"ends": "2022-05-31 00:00:00",
+		"approvals": true,
+		"assignments": false,
+		"notifications": false,
+		"invitations": false
+	}
+
+	@example
+	new DelegateUtils().deleteDelegate(delegateObj);
+
+	// true
+
+	@returns {boolean} true || false
+	*/
+	createDelegate: function (delegateObj) {
+		var d = new GlideRecord('sys_user_delegate');
+		d.initialize();
+		for (var i = 0; i < Object.keys(delegateObj).length; i++) {
+			var key = Object.keys(delegateObj)[i];
+			d[key] = delegateObj[key];
+		}
+		return d.insert() ? true : false;
+	},
+
+	/**SNDOC
+	@name editDelegate
+	@description Modifies an existing delegate with the specified settings.
+
+	@param {object} [delegateObj] - Object containing all properties needed to create a delegate record.
+	delegateObj = {
+		"user": "2f80007ddbea8b00e108d12c5e961951",
+		"delegate": "36f2984ddbb16b402e1f591e5e9619b7",
+		"starts": "2022-05-24 17:00:00",
+		"ends": "2022-05-31 00:00:00",
+		"approvals": true,
+		"assignments": false,
+		"notifications": false,
+		"invitations": false
+	}
+
+	@example
+	new DelegateUtils().editDelegate(delegateObj);
+
+	// true
+
+	@returns {boolean} true || false
+	*/
+	editDelegate: function (delegateObj) {
+		var d = new GlideRecord('sys_user_delegate');
+		if (d.get(delegateObj.sys_id)) {
+			for (var i = 0; i < Object.keys(delegateObj).length; i++) {
+				var key = Object.keys(delegateObj)[i];
+				if (key !== 'sys_id') {
+					d[key] = delegateObj[key];
+				}
+			}
+			return d.update() ? true : false;
+		} else {
+			return false;
+		}
+	},
+
+	/**SNDOC
+	@name removeDelegate
+	@description Deletes a specified delegate record.
+
+	@param {string} [sysId] - Sys_id of a delegate record
+	@param {boolean} [delRecord] - Determines if the delegate record is deleted or backdated.  Set to true to delete delegate records.
+
+	@example
+	new DelegateUtils().removeDelegate('2f80007ddbea8b00e108d12c5e961951', true);
+
+	// true
+
+	@returns {boolean} true || false
+	*/
+	removeDelegate: function (sysId, delRecord) {
+		var answer = false;
+		var dr = new GlideRecord('sys_user_delegate');
+		if (!!delRecord && dr.get(sysId)) {
+			answer = dr.deleteRecord();
+		} else if (dr.get(sysId)) {
+			var ends = new GlideDateTime();
+			ends.addSeconds(-5);
+			var starts = new GlideDateTime(dr.starts);
+			starts.addSeconds(-1);
+			dr.starts = starts;
+			dr.ends = ends;
+			answer = dr.update();
+		}
+		return answer;
+	},
+
+
+	type: 'DelegateUtils()'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2025-12-06 18:14:51</sys_created_on>
+        <sys_id>ebeff917932132103be3ff8ddd03d656</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>DelegateUtils</sys_name>
+        <sys_package display_value="Implementation ITSM DOMAIN separation " source="56df7917932132103be3ff8ddd03d64a">56df7917932132103be3ff8ddd03d64a</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Implementation ITSM DOMAIN separation ">56df7917932132103be3ff8ddd03d64a</sys_scope>
+        <sys_update_name>sys_script_include_ebeff917932132103be3ff8ddd03d656</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-12-06 18:14:51</sys_updated_on>
+    </sys_script_include>
+    <sys_es_latest_script action="INSERT_OR_UPDATE">
+        <id>ebeff917932132103be3ff8ddd03d656</id>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2025-12-06 18:14:51</sys_created_on>
+        <sys_id>a4008617932132103be3ff8ddd03d616</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-12-06 18:14:51</sys_updated_on>
+        <table>sys_script_include</table>
+        <use_es_latest>true</use_es_latest>
+    </sys_es_latest_script>
+</record_update>

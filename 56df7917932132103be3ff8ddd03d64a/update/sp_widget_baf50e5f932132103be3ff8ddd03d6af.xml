@@ -1,0 +1,676 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sp_widget">
+    <sp_widget action="INSERT_OR_UPDATE">
+        <category>custom</category>
+        <client_script><![CDATA[api.controller = function($scope, $timeout, $uibModal, spUtil, $window) {
+    /* widget controller */
+    const c = this;
+    c.isSmall = false;
+    c.loading = true;
+    c.validDate = false;
+
+    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        c.isMobile = true;
+    } else {
+        c.isMobile = false;
+    }
+
+    // Set initial values
+    c.$onInit = function() {
+        c.switchValue = 'delegated';
+        if (!c.mobile) {
+            sizeCheck();
+        }
+        setBaselineModalValues();
+    };
+
+    $scope.dateValidation = function() {
+        c.validDate = new Date($scope.end_date.value) > new Date();
+    };
+
+    // Control auto-fill of modal fields
+    c.setItem = function(obj) {
+        if (obj) {
+            c.delegateId = obj.sys_id;
+            c.openModal('modify', obj);
+        } else {
+            c.openModal('create');
+        }
+    };
+
+    // Modal handler
+    c.openModal = function(type, obj) {
+        c.type = type;
+
+        if (obj) {
+            $scope.delegate = {
+                displayValue: obj.delegate_name.full,
+                value: obj.delegate,
+                name: 'delegate'
+            };
+			$scope.start_date = {
+                displayValue: obj.starts,
+                value: obj.starts,
+                name: 'start_date'
+            };
+            $scope.end_date = {
+                displayValue: obj.ends,
+                value: obj.ends,
+                name: 'end_date'
+            };
+            c.approvals = !!parseInt(obj.approvals);
+            c.assignments = !!parseInt(obj.assignments);
+            c.meeting = !!parseInt(obj.invitations);
+            c.notifications = !!parseInt(obj.notifications);
+        } else {
+            setBaselineModalValues();
+        }
+
+        c.modalInstance = $uibModal.open({
+            templateUrl: 'delegateAction',
+            size: 'xs',
+            scope: $scope
+        });
+    };
+
+/////// start rbh ////
+$scope.validateDates = function () {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startVal = $scope.start_date.value;
+    const endVal = $scope.end_date.value;
+
+    // Si l'un des champs est vide → pas d'erreur pour l'instant
+    if (!startVal && !endVal) {
+        c.validDate = false;
+        c.dateError = "";
+        return;
+    }
+
+    const start = startVal ? new Date(startVal) : null;
+    const end = endVal ? new Date(endVal) : null;
+
+    // 1️⃣ Validation de la date de début
+    if (start && start < today) {
+        c.validDate = false;
+        c.dateError = "La date de début ne peut pas être avant aujourd’hui.";
+        $scope.start_date.value = ""; // Vide le champ
+        return;
+    }
+
+    // 2️⃣ Validation de la date de fin
+    if (end && end < today) {
+        c.validDate = false;
+        c.dateError = "La date de fin ne peut pas être avant aujourd’hui.";
+        $scope.end_date.value = ""; // Vide le champ
+        return;
+    }
+
+    if (start && end && end < start) {
+        c.validDate = false;
+        c.dateError = "La date de fin ne peut pas être avant la date de début.";
+        $scope.end_date.value = ""; 
+        return;
+    }
+
+    c.validDate = true;
+    c.dateError = "";
+};
+
+$scope.$watchGroup(['start_date.value', 'end_date.value'], function () {
+    $scope.validateDates();
+});
+
+////////// fin rbh //////
+    // One action to rule CRUD
+    c.uiAction = function(action, value) {
+        c.data.action = action;
+
+        c.loading = true;
+
+        if (action == 'create' || action == 'modify') {
+            c.modalInstance.close();
+            delegateObj = {};
+            if (action == 'modify') {
+                delegateObj.sys_id = c.delegateId;
+            }
+            delegateObj.delegate = $scope.delegate.value;
+            delegateObj.starts = $scope.start_date.value;
+            delegateObj.ends = $scope.end_date.value;
+            delegateObj.approvals = c.approvals;
+            delegateObj.assignments = c.assignments;
+            delegateObj.invitations = c.meeting;
+            delegateObj.notifications = c.notifications;
+
+            c.data.value = delegateObj;
+        } else if (action == 'typeChange') {
+            c.switchValue = value === 'delegates' ? 'delegated' : 'delegates';
+            c.data.value = value;
+        } else {
+            c.data.value = value;
+        }
+
+        c.server.update().then(function(r) {
+            c.data.action = undefined;
+            c.data.value = undefined;
+            c.delegateId = undefined;
+            c.loading = false;
+            setBaselineModalValues();
+        });
+    };
+
+
+    // Watch for changes made outside of this widget
+    const query = 'user=' + c.data.user;
+    spUtil.recordWatch($scope, "sys_user_delegate", query, function(name, data) {
+        c.uiAction('watcher');
+    });
+
+    const onresize = function(e) {
+        sizeCheck();
+    };
+    $window.addEventListener("resize", onresize);
+
+    // Dermine widget size for display purposes
+    function sizeCheck() {
+        $timeout(function() {
+            var answer = false;
+            var widget = document.getElementById(c.data.id);
+            var widgetWidth = widget.clientWidth;
+            if (widgetWidth < 768) {
+                answer = true;
+            }
+            c.isSmall = answer;
+            c.loading = false;
+
+        });
+    }
+
+    // // Baselines modal values to empty
+    // function setBaselineModalValues() {
+    //     const modalValues = {
+    //         displayValue: '',
+    //         value: '',
+    //     };
+
+    //     $scope.delegate = {
+    //        // modalValues,
+    //         name: 'delegate'
+    //     };
+	// 	  $scope.start_date = {
+    //        // modalValues,
+    //         name: 'start_date'
+    //     };
+    //     $scope.end_date = {
+    //        // modalValues,
+    //         name: 'end_date'
+    //     };
+    //     c.approvals = false;
+    //     c.assignments = false;
+    //     c.meeting = false;
+    //     c.notifications = false;
+    // }
+
+	function setBaselineModalValues() {
+    $scope.delegate = {
+        displayValue: '',
+        value: '',
+        name: 'delegate'
+    };
+
+    $scope.start_date = {
+        displayValue: '',
+        value: '',
+        name: 'start_date'
+    };
+
+    $scope.end_date = {
+        displayValue: '',
+        value: '',
+        name: 'end_date'
+    };
+
+    c.approvals = false;
+    c.assignments = false;
+    c.meeting = false;
+    c.notifications = false;
+}
+};]]></client_script>
+        <controller_as>c</controller_as>
+        <css>.type-change {&#13;
+  font-size: .8em;&#13;
+}&#13;
+&#13;
+.panel-actions {&#13;
+  float: right;&#13;
+}&#13;
+&#13;
+.no-delegates {&#13;
+  text-align: center;&#13;
+  align-items: center;&#13;
+  padding: 0.5em 1em 0.5em 1em;&#13;
+  border-top: 1px solid #ccc;&#13;
+  color: #2e2e2e;&#13;
+}&#13;
+&#13;
+.add-color, .edit-color, .remove-color {&#13;
+  color: #2e2e2e;&#13;
+}&#13;
+&#13;
+.mobile-delegate-wrapper {&#13;
+  border-top: 1px solid #ccc;&#13;
+}&#13;
+&#13;
+.delegate {&#13;
+  display: flex;&#13;
+  align-items: center;&#13;
+  padding: 0.5em 1em 0.5em 1em;&#13;
+  border-top: 1px solid #ccc;&#13;
+  color: #2e2e2e;&#13;
+}&#13;
+&#13;
+.mobile-options {&#13;
+  display: flex;&#13;
+  flex-grow: 3;&#13;
+  text-align: right;&#13;
+}&#13;
+&#13;
+.mobile-left-action {&#13;
+  flex-grow: 3;&#13;
+  justify-content: right;&#13;
+  margin-right: 2rem;&#13;
+}&#13;
+&#13;
+.mobile-delegate {&#13;
+  display: flex;&#13;
+  flex-direction: column;&#13;
+  padding: 0.5em 1em 0.5em 1em;&#13;
+  color: #2e2e2e;&#13;
+}&#13;
+&#13;
+.delegate &gt; div:first-child {&#13;
+  flex-basis: 15%; &#13;
+}&#13;
+&#13;
+.delegate &gt; div:last-child {&#13;
+  flex-basis: 5%; &#13;
+}&#13;
+&#13;
+.delegate-user {&#13;
+  display: flex;&#13;
+  flex: auto;&#13;
+  align-items: center;&#13;
+  min-width: 165px;&#13;
+  text-overflow: ellipsis;&#13;
+  overflow: hidden; &#13;
+}&#13;
+&#13;
+.delegate-name {&#13;
+  padding-left: 0.5em;&#13;
+  margin-right: 0.5em;&#13;
+}&#13;
+&#13;
+.delegate-option {&#13;
+  display: flex;&#13;
+  flex-direction: row;&#13;
+  align-items: center;&#13;
+  flex: auto;&#13;
+}&#13;
+&#13;
+.option {&#13;
+  padding: 2px 0px 2px 0px;&#13;
+  margin: 2px;&#13;
+  font-size: 1rem;&#13;
+  width: 8em;&#13;
+  text-align: center;&#13;
+}&#13;
+&#13;
+.enabled {&#13;
+  opacity: 1 !important;&#13;
+}&#13;
+&#13;
+.disabled {&#13;
+  background-color: #e3e3e4;&#13;
+  opacity: 0.45;&#13;
+}&#13;
+&#13;
+.small-right-margin {&#13;
+  margin-right: 1rem;&#13;
+}&#13;
+&#13;
+.delegate-dates {&#13;
+  display: flex;&#13;
+  flex-direction: column;&#13;
+}&#13;
+&#13;
+.date-container {&#13;
+  display: inline;&#13;
+  text-align: center;&#13;
+}&#13;
+&#13;
+.mobile-date-container {&#13;
+  display: flex;&#13;
+  flex-grow: 3;&#13;
+}&#13;
+&#13;
+.date-label {&#13;
+  float: left;&#13;
+}&#13;
+&#13;
+.date {&#13;
+  float: right;&#13;
+  margin-left: 0.5em;&#13;
+}&#13;
+&#13;
+.actions-horizontal {&#13;
+  display: flex;&#13;
+  flex-direction: row;&#13;
+  align-items: center;&#13;
+  padding-right: 0.25em;&#13;
+}&#13;
+&#13;
+.actions {&#13;
+  display: flex;&#13;
+  flex-direction: column;&#13;
+  align-items: center;&#13;
+  padding-right: 0.25em;&#13;
+}&#13;
+&#13;
+.crush-margin {&#13;
+  margin-right: 0 px;&#13;
+}&#13;
+&#13;
+.medium-right-margin {&#13;
+  margin-right: 2.5rem;&#13;
+}&#13;
+&#13;
+.action {&#13;
+  cursor: pointer;&#13;
+}</css>
+        <data_table>sp_instance</data_table>
+        <demo_data/>
+        <description/>
+        <docs/>
+        <field_list/>
+        <has_preview>false</has_preview>
+        <id>delegatesrbh</id>
+        <internal>false</internal>
+        <link><![CDATA[function link(scope, element, attrs, controller) {
+  
+}]]></link>
+        <name>Delegates</name>
+        <option_schema/>
+        <public>false</public>
+        <roles/>
+        <script><![CDATA[(function() {
+
+	// Initial settings
+	var delegateUtils = new DelegateUtils();
+	data.user = gs.getUserID();
+	data.dateformat = gs.getSession().getUser().getDateFormat();
+	var action = input.action;
+	data.id = gs.generateGUID();
+	var myDelegates = gs.getMessage("My Delegates");
+	var myDelegated = gs.getMessage("Delegated to Me");
+
+	var firstNameField = options.first_name_field || 'first_name';
+
+	// Run defaults
+	if (!input) {
+		getAllDelegates();
+		data.title = myDelegates;
+		data.swapTitle = myDelegated;
+	}
+
+	// Adds a delegate record via a script include
+	if (action == 'create' && input) {
+		var create = delegateUtils.createDelegate(input.value);
+		if (create) {
+			gs.addInfoMessage(gs.getMessage('Delegate created successfully.'));
+		} else {
+			gs.addErrorMessage(gs.getMessage(('Delegate was not created.')));
+		}
+		getAllDelegates();
+	}
+
+	// Deletes a delegate record via script include
+	if (action == 'remove' && input) {
+		var del = delegateUtils.removeDelegate(input.value, options.delete_delegates);
+		if (del) {
+			gs.addInfoMessage(gs.getMessage('Delegate removed successfully.'));
+		} else {
+			gs.addErrorMessage(gs.getMessage('Delegate was not removed.'));
+		}
+		getAllDelegates();
+	}
+
+	// Modifies a delegate record via script include
+	if (action == 'modify' && input) {
+		var edit = delegateUtils.editDelegate(input.value);
+		if (edit) {
+			gs.addInfoMessage(gs.getMessage('Delegate modified successfully.'));
+		} else {
+			gs.addErrorMessage(gs.getMessage('Delegate was not modified.'));
+		}
+		getAllDelegates();
+	}
+
+	if (action == 'typeChange' && input) {
+		if (input.value == 'delegated') {
+			data.title = myDelegated;
+			data.swapTitle = myDelegates;
+		} else {
+			data.title = myDelegates;
+			data.swapTitle = myDelegated;
+		}
+		getAllDelegates(input.value);	
+	} 
+
+	if (action == 'watcher' && input) {
+		getAllDelegates();
+	}
+
+	// Retrieves all delegates via script include
+	function getAllDelegates(type) {
+		var allDelegates = delegateUtils.getDelegates(data.user, data.dateformat, type, firstNameField);
+		data.delegates = allDelegates.delegates;
+	}
+
+})();]]></script>
+        <servicenow>false</servicenow>
+        <sys_class_name>sp_widget</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2025-12-06 18:43:51</sys_created_on>
+        <sys_id>baf50e5f932132103be3ff8ddd03d6af</sys_id>
+        <sys_mod_count>1</sys_mod_count>
+        <sys_name>Delegates</sys_name>
+        <sys_package display_value="Implementation ITSM DOMAIN separation " source="56df7917932132103be3ff8ddd03d64a">56df7917932132103be3ff8ddd03d64a</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Implementation ITSM DOMAIN separation ">56df7917932132103be3ff8ddd03d64a</sys_scope>
+        <sys_update_name>sp_widget_baf50e5f932132103be3ff8ddd03d6af</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-12-06 18:43:51</sys_updated_on>
+        <template><![CDATA[<div id="{{c.data.id}}" ng-style="{'width': c.options.width, 'margin': 'auto'}" class="panel panel-default">
+  <div class="header panel-heading">
+
+    <span class="panel-title">{{c.data.title}}</span>
+
+      <span class="type-change"><i class="fa fa-exchange" aria-hidden="true"></i>&nbsp;&nbsp;<a href="javascript:void(0)" ng-click="c.uiAction('typeChange', c.switchValue)">{{c.data.swapTitle}}</a></span>
+    
+    <div ng-show="c.switchValue == 'delegated'" class="panel-actions">
+      <div class="panel-link">
+        <a ng-show="!c.isMobile" class="action" ng-style="{'color': c.options.add_color}"
+          ng-click="c.setItem()">${Add}&nbsp;&nbsp;<i class="fa fa-plus-circle" aria-hidden="true"></i></a>
+        <a ng-show="c.isMobile" class="" ng-style="{'color': c.options.add_color}"
+          ng-click="c.setItem()"><i class="fa fa-plus-circle" aria-hidden="true"></i></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Present a loading placeholder during data loads -->
+  <div ng-show="c.loading" class="no-delegates">
+    <i class="fa fa-refresh fa-spin fa"></i>&nbsp;&nbsp;${Loading...}
+  </div>
+
+  <!-- Display a message if there are no delegates -->
+  <div ng-show="!c.data.delegates.length" class="no-delegates">
+    ${No delegates defined.}
+  </div>
+
+  <div ng-show="!c.isMobile">
+
+    <!-- Repeat all of the delegates found -->
+    <div ng-show="c.data.delegates.length && !c.loading" ng-repeat="obj in c.data.delegates" class="delegate">
+      <div class="delegate-user">
+        <span>
+        <sn-avatar class="avatar-large" primary="obj.delegate" show-presence="false" enable-context-menu="false" />
+      </span>
+        <span class="delegate-name">
+        {{obj.delegate_name.first}} {{obj.delegate_name.last}}
+      </span>
+      </div>
+
+
+      <!-- Big Mode -->
+      <div ng-show="!c.isSmall" class="delegate-option">
+        <span class="option"
+            ng-style="{{obj.approvals}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+            ng-class="obj.approvals == 1 ? 'enabled' : 'disabled'">${Approvals}</span>
+      </div>
+      <div ng-show="!c.isSmall" class="delegate-option">
+        <span class="option"
+            ng-style="{{obj.assignments}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+            ng-class="obj.assignments == 1 ? 'enabled' : 'disabled'">${Assignments}</span>
+      </div>
+      <div ng-show="!c.isSmall" class="delegate-option">
+        <span class="option"
+            ng-style="{{obj.invitations}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+            ng-class="obj.invitations == 1 ? 'enabled' : 'disabled'">${Invitations}</span>
+      </div>
+      <div ng-show="!c.isSmall" class="delegate-option">
+        <span class="option"
+            ng-style="{{obj.notifications}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+            ng-class="obj.notifications == 1 ? 'enabled' : 'disabled'">${Notifications}</span>
+      </div>
+
+      <!-- Little/Modal Mode -->
+      <div ng-show="c.isSmall && !c.isMobile">
+        <div class="option"
+          ng-style="{{obj.approvals}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+          ng-class="obj.approvals == 1 ? 'enabled' : 'disabled'">
+          <span>${Approvals}</span>
+        </div>
+        <div class="option"
+          ng-style="{{obj.assignments}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+          ng-class="obj.assignments == 1 ? 'enabled' : 'disabled'">
+          <span>${Assignments}</span>
+        </div>
+      </div>
+
+      <div ng-show="c.isSmall && !c.isMobile" class="small-right-margin">
+        <div class="option"
+          ng-style="{{obj.invitations}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+          ng-class="obj.invitations == 1 ? 'enabled' : 'disabled'">
+          <span>${Invitations}</span>
+        </div>
+        <div class="option"
+          ng-style="{{obj.notifications}} === 1 && {'color':'{{c.options.enabled_text_color}}', 'background-color': '{{c.options.enabled_bg_color}}'}"
+          ng-class="obj.notifications == 1 ? 'enabled' : 'disabled'">
+          <span>${Notifications}</span>
+        </div>
+      </div>
+
+
+      <div ng-show="!c.isMobile" class="delegate-option">
+        <div class="delegate-dates">
+          <div class=date-container>
+            <div class="date-label"><strong>Starts:</strong></div>
+            <div class="date">{{obj.starts}}</div>
+          </div>
+          <div class=date-container>
+            <div class="date-label"><strong>Ends:</strong></div>
+            <div class="date">{{obj.ends}}</div>
+          </div>
+        </div>
+      </div>
+      <div ng-show="c.switchValue == 'delegated'">
+        <div class="pull-right" ng-class="!c.isSmall ? 'actions-horizontal' : 'actions'">
+          <div ng-class="c.isSmall ? 'crush-margin' : 'medium-right-margin'">
+            <a class="action" ng-style="{'color': c.options.edit_color}" ng-click="c.setItem(obj)" aria-label="Edit"
+              alt-text="Edit">
+              <i class="fa fa-pencil fa-lg"></i>
+            </a>
+          </div>
+          <div>
+            <a class="action" ng-style="{'color': c.options.remove_color}" ng-click="c.uiAction('remove',obj.sys_id)"
+              aria-label="Remove" alt-text="Remove">
+              <i class="fa fa-trash fa-lg action"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div ng-show="c.isMobile">
+    <div ng-show="c.data.delegates.length && !c.loading" ng-repeat="obj in c.data.delegates" class="">
+      <div class="mobile-delegate-wrapper mobile-delegate">
+        <div class="delegate-user">
+          <span>
+          <sn-avatar class="avatar-large" primary="obj.delegate" show-presence="false" enable-context-menu="false" />
+        </span>
+          <span class="delegate-name">
+          {{obj.delegate_name.first}} {{obj.delegate_name.last}}
+        </span>
+
+
+          <div ng-show="c.switchValue == 'delegated'" class="mobile-options">
+            <div class="mobile-left-action">
+              <a class="action" ng-style="{'color': c.options.edit_color}" ng-click="c.setItem(obj)" aria-label="Edit"
+                alt-text="Edit">
+                <i class="fa fa-pencil fa-lg"></i>
+              </a>
+            </div>
+            <div>
+              <a class="action" ng-style="{'color': c.options.remove_color}" ng-click="c.uiAction('remove',obj.sys_id)"
+                aria-label="Remove" alt-text="Remove">
+                <i class="fa fa-trash fa-lg action"></i>
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="delegate-option">
+          <div class="mobile-date-container">
+            <div class="date-label"><strong>Starts:</strong></div>
+            <div class="date">{{obj.starts}}</div>
+          </div>
+          <div>
+            <div class="date-label"><strong>Ends:</strong></div>
+            <div class="date">{{obj.ends}}</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div ng-show="c.isMobile">
+
+</div>]]></template>
+    </sp_widget>
+    <sys_es_latest_script action="INSERT_OR_UPDATE">
+        <id>baf50e5f932132103be3ff8ddd03d6af</id>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2025-12-06 18:42:39</sys_created_on>
+        <sys_id>b756ca5f932132103be3ff8ddd03d621</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-12-06 18:42:39</sys_updated_on>
+        <table>sp_widget</table>
+        <use_es_latest>true</use_es_latest>
+    </sys_es_latest_script>
+</record_update>
